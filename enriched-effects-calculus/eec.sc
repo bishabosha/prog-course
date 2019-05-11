@@ -191,8 +191,6 @@ enum Type derives Eql {
   case TVar(n: TName)
 }
 
-// def (a: Type) `TArr` (b: Type) = Type.TArr(a,b)
-
 import Type._
 
 val TPoint = TBase(PPoint)
@@ -207,11 +205,8 @@ import Scheme._
 opaque type Id = Long
 
 object Id {
-  private inline def (id: Id) asScala: Long =
-    id.asInstanceOf[Long]
-
-  private inline def apply(l: Long): Id =
-    l.asInstanceOf[Id]
+  private inline def (id: Id) asScala: Long = id.asInstanceOf[Long]
+  private inline def apply(l: Long): Id     = l.asInstanceOf[Id]
 
   val initId = 0l
 
@@ -220,34 +215,52 @@ object Id {
 
 import Id._
 
-opaque type TypeEnv = Map[Name, Scheme]
+// opaque type TypeEnv = Map[Name, Scheme]
 
-object TypeEnv {
-  import scala.collection.immutable.ListMap
+// object TypeEnv {
+//   import scala.collection.immutable.ListMap
 
-  private inline def (e: TypeEnv) asScala =
-    e.asInstanceOf[Map[Name, Scheme]]
+//   private inline def (e: TypeEnv) asScala =
+//     e.asInstanceOf[Map[Name, Scheme]]
 
-  private inline def apply(e: Map[Name, Scheme]): TypeEnv =
-    e.asInstanceOf[TypeEnv]
+//   private inline def apply(e: Map[Name, Scheme]): TypeEnv =
+//     e.asInstanceOf[TypeEnv]
 
-  def empty: TypeEnv =
-    TypeEnv { Map.empty }
+//   def empty: TypeEnv =
+//     TypeEnv { Map.empty }
 
-  def (e: TypeEnv) elems: List[Scheme] =
-    ListMap(e.asScala.toSeq.sortBy(_._1):_*).values.toList
+//   def (e: TypeEnv) elems: List[Scheme] =
+//     ListMap(e.asScala.toSeq.sortBy(_._1):_*).values.toList
 
-  def (e: TypeEnv) map(f: Scheme => Scheme): TypeEnv =
-    TypeEnv { e.asScala.mapValues(f) }
+//   def (e: TypeEnv) map(f: Scheme => Scheme): TypeEnv =
+//     TypeEnv { e.asScala.mapValues(f) }
 
-  def (e: TypeEnv) extend(p: (Name, Scheme)): TypeEnv =
-    TypeEnv { e.asScala + p }
+//   def (e: TypeEnv) extend(p: (Name, Scheme)): TypeEnv =
+//     TypeEnv { e.asScala + p }
 
-  def (e: TypeEnv) restrict(x: Name): TypeEnv =
-    TypeEnv { e.asScala - x }
+//   def (e: TypeEnv) restrict(x: Name): TypeEnv =
+//     TypeEnv { e.asScala - x }
+// }
+
+trait TypeEnv[Env] {
+  val empty: Env
+  def (e: Env) elems: List[Scheme]
+  def (e: Env) map(f: Scheme => Scheme): Env
+  def (e: Env) extend(p: (Name, Scheme)): Env
+  def (e: Env) restrict(x: Name): Env
 }
 
-import TypeEnv._
+type TypeEnvMap = Map[Name, Scheme]
+
+implied for TypeEnv[TypeEnvMap] {
+  import scala.collection.immutable.ListMap
+
+  val empty                                     = Map.empty
+  def (e: TypeEnvMap) map(f: Scheme => Scheme)  = e.mapValues(f)
+  def (e: TypeEnvMap) extend(p: (Name, Scheme)) = e + p
+  def (e: TypeEnvMap) restrict(x: Name)         = e - x
+  def (e: TypeEnvMap) elems = ListMap(e.toSeq.sortBy(_._1):_*).values.toList
+}
 
 enum TypeError { case Error(msg: String) }
 
@@ -294,9 +307,9 @@ implied [A:Substitutable] for Substitutable[List[A]] {
   def (as: List[A]) free                 = as.foldLeft(Set.empty)(_ ++ _.free)
 }
 
-implied for Substitutable[TypeEnv] {
-  def (e: TypeEnv) `subFrom` (s: Subst) = e.map(_ `subFrom` s)
-  def (a: TypeEnv) free                 = a.elems.free
+implied [Env:TypeEnv] for Substitutable[Env] {
+  def (e: Env) `subFrom` (s: Subst) = e.map(_ `subFrom` s)
+  def (a: Env) free                 = a.elems.free
 }
 
 val emptySubst: Subst = Map.empty
