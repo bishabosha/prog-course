@@ -350,27 +350,29 @@ object Parsing {
   private object EECParsers extends JavaTokenParsers {
     type P = Parser[Tree]
 
-    def expr:  P = lam | lin | let | letT | cse | app
-    def expr1: P = tsor | pExpr
+    val term:  P = phrase(expr)
+    def expr:  P = app
+    def expr1: P = lam | lin | let | letT | cse | expr2
+    def expr2: P = tsor | pExpr
     def pExpr: P = op | aexpr
-    def aexpr: P = ref | unit | pair | defr
+    def aexpr: P = ref | unit | pair | wrap
 
-    def app: P = rep1(expr1)       ^^ { case ts => ts.reduceLeft(App(_,_)) }
-    def lam: P = "\\"~id~"."~expr  ^^ { case _~x~_~t => Lam(x,t) }
-    def lin: P = "^\\"~id~"."~expr ^^ { case _~x~_~t => Lin(x,t) }
+    def app: P = rep1(expr1)          ^^ { case ts => ts.reduceLeft(App(_,_)) }
+    def lam: P = "\\"~!id~!"."~!expr  ^^ { case _~x~_~t => Lam(x,t) }
+    def lin: P = "^\\"~!id~!"."~!expr ^^ { case _~x~_~t => Lin(x,t) }
 
-    def let: P = "let"~"!"~id~"be"~expr~"in"~expr ^^ {
+    def let: P = "let"~"!"~id~"be"~!expr~!"in"~!expr ^^ {
       case _~_~x~_~t~_~u => Let(x,t,u)
     }
 
-    def letT: P = "let"~"!"~id~"*:"~id~"be"~expr~"in"~expr ^^ {
+    def letT: P = "let"~"!"~id~"*:"~!id~!"be"~!expr~!"in"~!expr ^^ {
       case _~_~x~_~y~_~s~_~t => LetT(x,y,s,t)
     }
 
     def cse: P = {
-      "case"~expr~"of"~"{"~
-        "inl"~id~"."~expr~";"~
-        "inr"~id~"."~expr~
+      "case"~!expr~!"of"~!"{"~!
+        "inl"~!id~!"."~!expr~!";"~!
+        "inr"~!id~!"."~!expr~!
       "}" ^^ { case _~e~_~_~_~x~_~l~_~_~y~_~r~_ => CaseExpr(e,x,l,y,r) }
     }
 
@@ -385,11 +387,11 @@ object Parsing {
       }
     }
 
-    def tsor: P = "!"~aexpr~"*:"~expr1  ^^ { case _~t~_~z   => Tensor(t,z) }
-    def pair: P = "("~expr~","~expr~")" ^^ { case _~t~_~u~_ => Pair(t,u) }
-    def defr: P = "("~expr~")"          ^^ { case _~e~_     => e }
-    def unit: P = "*"                   ^^ { _              => Point }
-    def ref:  P = id                    ^^ {                   Var(_) }
+    def tsor: P = "!"~aexpr~"*:"~!aexpr   ^^ { case _~t~_~z   => Tensor(t,z) }
+    def pair: P = "("~expr~","~!expr~!")" ^^ { case _~t~_~u~_ => Pair(t,u)   }
+    def wrap: P = "("~expr~")"            ^^ { case _~e~_     => e           }
+    def unit: P = "*"                     ^^ { _              => Point       }
+    def ref:  P = id                      ^^ {                   Var(_)      }
 
     val reservedWords = Set(
       "case", "of", "let", "be", "in", "fst", "snd", "inl", "inr"
@@ -408,7 +410,7 @@ object Parsing {
     import EECParsers._
     import java.io.StringReader
 
-    def (s: String) eec: Tree | String = parseAll(expr, StringReader(s)) match {
+    def (s: String) eec: Tree | String = parseAll(term, StringReader(s)) match {
       case Success(matched,_) => matched
       case f:Failure          => f.toString
       case e:Error            => e.toString
@@ -423,7 +425,8 @@ object Parsing {
 
 import Parsing.EEC._
 
-puts("let !x *: z be s in inr".eec.!)
+puts("f (\\x.y) b".eec.!)
+puts("let !x *: z be s in inr y".eec.!)
 puts("let !y be x in *".eec.!)
 puts("!a".eec.!)
 puts("?v".eec.!)
@@ -434,7 +437,7 @@ puts("inl *".eec.!)
 puts("inr *".eec.!)
 puts("!a *: b".eec.!)
 puts("f (a b) (c d e)".eec.!)
-puts("case z of {inl l. f a b; inr r. *}".eec.!)
+puts("case z of {inl l.f a b; inr r.*}".eec.!)
 
 /////// ----- Usage ----- /////////
 
