@@ -90,7 +90,12 @@ def (tree: Tree) pretty: String = {
 
   def wrapIfComplex(t: Tree, s: String) = t match {
     case Point | _:(Var | Lit | Pair) => s
-    case _ => s"($s)"
+    case _                            => s"($s)"
+  }
+
+  def wrapIfExpr1(t: Tree, s: String) = t match {
+    case _:(Lam | Lin | Let | LetT | CaseExpr) => s"($s)"
+    case _                                     => s
   }
 
   val prog = tree.fold(List.empty[StatT]) { (acc, t) =>
@@ -109,8 +114,9 @@ def (tree: Tree) pretty: String = {
 
       case App(f,t) =>
         { s => val f1::t1::s1 = s
+          val f2 = wrapIfExpr1(f,f1)
           val t2 = wrapIfComplex(t,t1)
-          s"$f1 $t2"::s1
+          s"$f2 $t2"::s1
         }::acc
 
       case Eval(f,t) =>
@@ -426,26 +432,30 @@ object Parsing {
 import Parsing.EEC._
 
 puts("f (\\x.y) b".eec.!)
-puts("let !x *: z be s in inr y".eec.!)
+puts("let !x *: z be s in inr z".eec.!)
 puts("let !y be x in *".eec.!)
 puts("!a".eec.!)
 puts("?v".eec.!)
 puts("a".eec.!)
+puts("!f g".eec.!)
+puts("!(f g)".eec.!)
 puts("fst (a, b)".eec.!)
 puts("snd (*, (a, b))".eec.!)
 puts("inl *".eec.!)
 puts("inr *".eec.!)
 puts("!a *: b".eec.!)
+puts("!a *: (b g)".eec.!)
 puts("f (a b) (c d e)".eec.!)
 puts("case z of {inl l.f a b; inr r.*}".eec.!)
+puts("""(\x.x) (\x.x)""".eec.!)
 
 /////// ----- Usage ----- /////////
 
-val I = """ \x.x """.eec.!
-val K = """ \x.\y.x """.eec.!
-val S = """ \f.\g.\x.f x (g x) """.eec.!
+val I = """\x.x""".eec.!
+val K = """\x.\y.x""".eec.!
+val S = """\f.\g.\x.f x (g x)""".eec.!
 
-val Bind = """ \f.\x.let !y be x in f y """.eec.!
+val Bind = """\f.\x.let !y be x in f y""".eec.!
 
 puts(I)
 puts(K)
