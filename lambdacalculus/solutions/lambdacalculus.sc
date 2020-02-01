@@ -7,29 +7,40 @@ import scala.language.implicitConversions
 
 /*-- Auxilliary definitions for assessment of this worksheet -- */
 
-@FunctionalInterface
-trait Show[A] {
-  /**Used for converting values to a String for printing
-  */
-  def (a: A) show: String
+object FuncLib {
+
+  @FunctionalInterface
+  trait Show[A] {
+    /**Used for converting values to a String for printing
+    */
+    def (a: A) show: String
+  }
+
+  /**Displays a value given an instance of Show.*/
+  def puts[A](a: A)(given Show[A]) = println(show(a))
+  def show[A](a: A)(given Show[A]) = summon[Show[A]].show(a)
+
+  object Show {
+
+    given Show[String] = identity
+
+    given [A](given Show[A]): Show[List[A]] =
+      _.map(_.show).mkString("[", ",", "]")
+
+    given [A](given Show[A]): Show[Option[A]] =
+      _.toList.show
+
+    given [A,B](given Show[A], Show[B]): Show[(A,B)] =
+      (a,b) => s"(${a.show}, ${b.show})"
+
+    given [A,B,C](given Show[A], Show[B], Show[C]): Show[(A,B,C)] =
+      (a,b,c) => s"(${a.show}, ${b.show}, ${c.show})"
+
+  }
+
 }
 
-object Show {
-  /**Displays a value given an instance of Show.
-  */
-  def puts[A](a: A) given Show[A] =
-    println(the[Show[A]].show(a))
-}
-
-implied for Show[String] = identity
-
-implied [A] given Show[A] for Show[List[A]] =
-  _.map(_.show).mkString("[", ",", "]")
-
-implied [A] given Show[A] for Show[Option[A]] =
-  _.toList.show
-
-import Show._
+import FuncLib._
 
 /*-------------------------*
  *------- PART A ----------*
@@ -60,7 +71,7 @@ def (term: Term) pretty = {
   inner(0, term)
 }
 
-implied for Show[Term] = pretty
+given Show[Term] = pretty
 
 val demo0 =
   Lambda("a",
@@ -95,10 +106,10 @@ inline def numeral[I <: Int] = {
 
 /* -------------- Assignment 2 -------------- */
 
-val variables: Stream[Var] = {
-  val alpha = ('a' to 'z').toStream.map(_.toString)
+val variables: LazyList[Var] = {
+  val alpha = ('a' to 'z').to(LazyList).map(_.toString)
   val numeric = for
-    n <- Stream.from(1)
+    n <- LazyList.from(1)
     x <- alpha
   yield s"$x$n"
   alpha #::: numeric
@@ -241,9 +252,6 @@ val example2 =
 
 type PState = (Term, List[Term])
 
-implied [A,B] given Show[A], Show[B] for Show[(A,B)] =
-  (a,b) => s"(${a.show}, ${b.show})"
-
 val state1 = (
   Lambda("x", Lambda("y", Variable("x"))),
   List(Variable("Yes"), Variable("No")))
@@ -314,10 +322,8 @@ def (ep: Environment) toList(acc: EnvList): EnvList = ep match {
   case Env(x,n,e,es) => es.toList((x,n,e)::acc)
 }
 
-implied showT3 [A,B,C] given Show[A], Show[B], Show[C] for Show[(A,B,C)] =
-  (a,b,c) => s"(${a.show}, ${b.show}, ${c.show})"
-
-implied for Show[Environment] = _.toList(Nil).show
+given Show[Environment] = env =>
+  FuncLib.Show.given_Show_List[(Var, Term, Environment)].show(env.toList(Nil))
 
 type State = (Term, Environment, List[(Term, Environment)])
 

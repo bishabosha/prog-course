@@ -2,35 +2,48 @@
 import scala.language.implicitConversions
 
 /*-------------------------------------*
- *---- Lambda Calculus Interpreter ----* 
+ *---- Lambda Calculus Interpreter ----*
  *-------------------------------------*/
 
 /*-- Auxilliary definitions for assessment of this worksheet -- */
 
-@FunctionalInterface
-trait Show[A] {
-  /**Used for converting values to a String for printing
-  */
-  def (a: A) show: String
+object FuncLib {
+
+  @FunctionalInterface
+  trait Show[A] {
+    /**Used for converting values to a String for printing
+    */
+    def (a: A) show: String
+  }
+
+  /**Displays a value given an instance of Show.*/
+  def puts[A](a: A)(given Show[A]) = println(show(a))
+  def show[A](a: A)(given Show[A]) = summon[Show[A]].show(a)
+
+  object Show {
+
+    given Show[String] = identity
+
+    given [A](given Show[A]): Show[List[A]] =
+      _.map(_.show).mkString("[", ",", "]")
+
+    given [A](given Show[A]): Show[Option[A]] =
+      _.toList.show
+
+    given [A,B](given Show[A], Show[B]): Show[(A,B)] =
+      (a,b) => s"(${a.show}, ${b.show})"
+
+    given [A,B,C](given Show[A], Show[B], Show[C]): Show[(A,B,C)] =
+      (a,b,c) => s"(${a.show}, ${b.show}, ${c.show})"
+
+  }
+
 }
 
-object Show {
-  /**Displays a value given an instance of Show.
-  */
-  def puts[A](a: A) given Show[A] =
-    println(the[Show[A]].show(a))
-}
-
-implied for Show[String] = identity
-
-implied [A] given Show[A] for Show[List[A]] {
-  def (xs: List[A]) show = xs.map(_.show).mkString("[", ",", "]")
-}
-
-import Show._
+import FuncLib._
 
 /*-------------------------*
- *------- PART A ----------* 
+ *------- PART A ----------*
  *-------------------------*/
 
 type Var = String
@@ -43,23 +56,22 @@ enum Term derives Eql {
 
 import Term._
 
-def pretty(term: Term) = {
+def (term: Term) pretty = {
   def inner(i: Int, term: Term): String = term match {
     case Variable(x) => x
+
     case Lambda(x, m) =>
-      val t = inner(0, m)
-      val l = s"\\$x. $t"
+      val l = s"\\$x. ${inner(0, m)}"
       if i != 0 then s"($l)" else l
+
     case Apply(n,m) =>
-      val n1 = inner(1,n)
-      val m1 = inner(2, m)
-      val a  = s"$n1 $m1"
+      val a  = s"${inner(1,n)} ${inner(2, m)}"
       if i == 2 then s"($a)" else a
   }
   inner(0, term)
 }
 
-implied for Show[Term] = pretty
+given Show[Term] = pretty
 
 val demo0 =
   Lambda("a",
@@ -69,12 +81,16 @@ val demo0 =
           Lambda("y", Variable("a")),
           Variable("x")),
         Variable("b"))))
-        
+
 // puts(demo0)
 
 /* -------------- Assignment 1 -------------- */
 
-def numeral[I <: Int] = ???
+inline def fst[A, B, C](f: A => C): (A, B) => C = ???
+
+inline def church[I <: Int, A](f: A => A)(z: A) = ???
+
+inline def numeral[I <: Int] = ???
 
 // puts(numeral[0])
 // puts(numeral[1])
@@ -82,45 +98,42 @@ def numeral[I <: Int] = ???
 
 /* -------------- Assignment 2 -------------- */
 
-val variables: Stream[Var] = ???
+val variables: LazyList[Var] = ???
 
 // puts(List(0,1,25,26,27,100,3039).map(variables(_)))
 
-def filterVariables(xs: Seq[Var], ys: Seq[Var]): Seq[Var] = ???
+def (xs: Seq[Var]) `filterVariables` (ys: Seq[Var]) = ???
 
 // puts(
-//   filterVariables(
-//     List("y","z","a1","a2"),
-//     List("y","a1","a3")
-//   ).toList)
+//   (List("y","z","a1","a2") `filterVariables` List("y","a1","a3")).toList)
 
-def fresh(vs: Seq[Var]): Var = ???
+def (vs: Seq[Var]) fresh = ???
 
-// puts(fresh(List("a","b","x")))
+// puts(List("a","b","x").fresh)
 
-def used(t: Term): List[Var] = ???
+def (t: Term) used = ???
 
-// val usedD = used(demo0)
+// val usedD = demo0.used
 // puts(usedD)
-// puts(fresh(usedD))
+// puts(usedD.fresh)
 
 /* -------------- Assignment 3 -------------- */
 
-def rename(x: Var, y: Var, t: Term): Term = ???
+def (t: Term) `rename` (x: Var, y: Var): Term = ???
 
-// puts(rename("b","z",demo0))
+// puts(demo0 `rename` ("b","z"))
 
-def substitute(x: Var, n: Term, t: Term): Term = ???
+def (t: Term) `substitute` (x: Var, n: Term): Term = ???
 
-// puts(substitute("b", numeral[0], demo0))
+// puts(demo0 `substitute` ("b", numeral[0]))
 
 /* -------------- Assignment 4 -------------- */
 
-def beta(t: Term): Stream[Term] = ???
+def (t: Term) beta: Option[Term] = ???
 
 // val demo1 = Apply(demo0, numeral[1])
 // puts(demo1)
-// puts(beta(demo1).toList)
+// puts(demo1.beta)
 
 def normalize(t: Term): Unit = ???
 
@@ -128,7 +141,7 @@ def normalize(t: Term): Unit = ???
 
 /* ---------------------------- */
 
-def aBeta(t: Term): Stream[Term] = ???
+def (t: Term) aBeta: Option[Term] = ???
 
 def aNormalize(t: Term): Unit = ???
 
@@ -138,14 +151,29 @@ def aNormalize(t: Term): Unit = ???
 
 /**Should reduce in more steps with normal order
  */
-val example1 = ???
+val example1 =
+  Apply(
+    Lambda("x",
+      Apply(Variable("x"), Variable("x"))),
+    Apply(
+      Lambda("y", Variable("y")),
+      Variable("z")))
 
 // normalize(example1)
 // aNormalize(example1)
 
 /**Should reduce in more steps with applicative order
  */
-val example2 = ???
+val example2 =
+  Apply(
+    Apply(
+      Lambda("x",
+        Lambda("y", Variable("x"))),
+      Variable("x")),
+    Lambda("a",
+      Apply(
+        Lambda("b", Variable("c")),
+        Variable("a"))))
 
 // normalize(example2)
 // aNormalize(example2)
@@ -156,11 +184,11 @@ val example2 = ???
 
 /* -------------- Assignment 5 (PAM) -------------- */
 
-type PState = Nothing
+type PState = (Term, List[Term])
 
-// implied for Show[PState] = ???
-
-val state1: PState = ???
+val state1 = (
+  Lambda("x", Lambda("y", Variable("x"))),
+  List(Variable("Yes"), Variable("No")))
 
 val term1 =
   Apply(
@@ -184,11 +212,11 @@ val term2 =
 
 def pStart(t: Term): PState = ???
 
-def pStep(s: PState): PState = ???
+def (s: PState) step = ???
 
-def pFinal(s: PState): PState = ???
+def (s: PState) finalState = ???
 
-def pReadback(s: PState): Term = ???
+def (s: PState) toTerm: Term = ???
 
 def pRun(t: Term): Unit = ???
 
@@ -197,17 +225,61 @@ def pRun(t: Term): Unit = ???
 
 /* -------------- Assignment 6 (KAM) -------------- */
 
-type Environment = Nothing
-type State = Nothing
+enum Environment {
+  case Env(x: Var, t: Term, e: Environment, es: Environment)
+  case Z
+}
 
-// implied for Show[Environment] = ???
-// implied for Show[State] = ???
+import Environment._
 
-val state2: State = ???
+type EnvList = List[(Var, Term, Environment)]
 
-val state3: State = ???
+def (ep: Environment) toList(acc: EnvList): EnvList = ep match {
+  case Z             => acc
+  case Env(x,n,e,es) => es.toList((x,n,e)::acc)
+}
 
-val state4: State = ???
+given Show[Environment] = env =>
+  FuncLib.Show.given_Show_List[(Var, Term, Environment)].show(env.toList(Nil))
+
+type State = (Term, Environment, List[(Term, Environment)])
+
+val state2: State =
+  (
+    Apply(Lambda("x", Variable("x")),
+      Variable("y")),
+    Env("y", Lambda("z", Variable("z")), Z, Z),
+    List.empty
+  )
+
+val state3: State  =
+  (
+    Apply(Variable("x"), Variable("x")),
+    Env(
+      "x",
+      Lambda("x", Apply(Variable("x"), Variable("x"))),
+      Z,
+      Z),
+    List.empty
+  )
+
+val state4: State =
+  (
+    Lambda("y", Variable("x")),
+    Z,
+    List((
+      Variable("z"),
+      Env(
+        "z",
+        Lambda("a", Variable("b")),
+        Env(
+          "b",
+          Variable("c"),
+          Z,
+          Z),
+        Z)
+    ))
+  )
 
 // puts(state2)
 // puts(state3)
@@ -215,15 +287,15 @@ val state4: State = ???
 
 def start(t: Term): State = ???
 
-def step(s: State): State = ???
+def (s: State) step: State = ???
 
-def finalState(s: State) = ???
+def (s: State) finalState = ???
 
-def eval(t: Term, e: Environment): Term = ???
+def (t: Term) eval( e: Environment): Term = ???
 
-def readback(s: State): Term = ???
+def (s: State) toTerm: Term = ???
 
 def run(t: Term): Unit = ???
 
 // run(term1)
-// run(readback(state2))
+// run(state2.toTerm)

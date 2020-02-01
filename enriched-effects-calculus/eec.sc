@@ -11,28 +11,18 @@ trait Show[A] {
 object Show {
   /**Displays a value given an instance of Show.
   */
-  def puts[A](a: A) given Show[A] =
-    println(the[Show[A]].show(a))
+  def puts[A](a: A)(given Show[A])=
+    println(summon[Show[A]].show(a))
 }
 
 import Show._
 import annotation.tailrec
 
-implied for Show[String] = identity
+given Show[String] = identity
 
 /////// ----- Trees ----- /////////
 
 type Name = String
-
-opaque type Constant = Any
-
-object Constant {
-  def apply(a: Any): Constant = a.asInstanceOf[Constant]
-  def (c: Constant) render: String = c.toString
-  implied for Eql[Constant, Constant] = Eql.derived
-}
-
-import Constant._
 
 enum Ops derives Eql {
   case Fst, Snd, Inl, Inr
@@ -40,27 +30,46 @@ enum Ops derives Eql {
 
 import Ops._
 
-enum Tree derives Eql {
-  case Point
-  case Pair(a: Tree, b: Tree)
-  case Var(name: Name)
-  case App(f: Tree, t: Tree)
-  case Eval(f: Tree, t: Tree)
-  case Lam(x: Name, t: Tree)
-  case Lin(x: Name, t: Tree)
-  case Lit(c: Constant)
-  case CaseExpr(e: Tree, x: Name, l: Tree, y: Name, r: Tree)
-  case Op(ops: Ops)
-  case Bang(t: Tree)
-  case WhyNot(e: Tree)
-  case Tensor(t: Tree, z: Tree)
-  case Let(n: Name, t: Tree, u: Tree)
-  case LetT(x: Name, z: Name, s: Tree, t: Tree)
+object ast {
+
+  import Constants.Constant
+
+  object Constants {
+    opaque type Constant = Any
+
+    object Constant {
+      def apply(a: Any): Constant = a.asInstanceOf[Constant]
+      def (c: Constant) render: String = c.toString
+      given Eql[Constant, Constant] = Eql.derived
+    }
+  }
+
+  enum Tree derives Eql {
+    case Point
+    case Pair(a: Tree, b: Tree)
+    case Var(name: Name)
+    case App(f: Tree, t: Tree)
+    case Eval(f: Tree, t: Tree)
+    case Lam(x: Name, t: Tree)
+    case Lin(x: Name, t: Tree)
+    case Lit(c: Constant)
+    case CaseExpr(e: Tree, x: Name, l: Tree, y: Name, r: Tree)
+    case Op(ops: Ops)
+    case Bang(t: Tree)
+    case WhyNot(e: Tree)
+    case Tensor(t: Tree, z: Tree)
+    case Let(n: Name, t: Tree, u: Tree)
+    case LetT(x: Name, z: Name, s: Tree, t: Tree)
+  }
 }
 
-import Tree._
 
-def (tree: Tree) fold[A](z: A)(f: (A, Tree) => A): A = {
+import ast.Tree
+import ast.Constants
+
+def [A](tree: Tree) fold(z: A)(f: (A, Tree) => A): A = {
+  import Tree._
+
   @tailrec
   def inner(z: A, ts: List[Tree]): A = ts match {
     case Nil => z
@@ -83,6 +92,7 @@ def (tree: Tree) fold[A](z: A)(f: (A, Tree) => A): A = {
 }
 
 def (tree: Tree) pretty: String = {
+  import Tree._, Constants.Constant._
 
   type StackT = List[String]
   type StatT = StackT => StackT
@@ -171,76 +181,85 @@ def (tree: Tree) pretty: String = {
   prog.foldLeft(List.empty[String])((a,f) => f(a)).head
 }
 
-implied for Show[Tree] = pretty
+given Show[Tree] = pretty
 
 /////// ----- Types ----- /////////
 
-enum Prim derives Eql {
-  case PVoid
+
+object Types {
+
+  import Type._, Prim._
+
+  enum Prim derives Eql {
+    case PVoid
+  }
+
+  opaque type TName = String
+
+  object TName {
+    def apply(s: String): TName = s.asInstanceOf[TName]
+  }
+
+  enum Type derives Eql {
+    case TArr(a: Type, b: Type)
+    case TLin(a: Type, b: Type)
+    case TSum(a: Type, b: Type)
+    case TTen(a: Type, b: Type)
+    case TBang(a: Type)
+    case TPair(a: Type, b: Type)
+    case TBase(p: Prim)
+    case TVar(n: TName)
+    case TPoint
+  }
+
+  enum Scheme derives Eql { case Forall(vs: List[TName], t: Type) }
+
+  val TVoid  = TBase(PVoid)
 }
 
-import Prim._
-
-opaque type TName = String
-
-object TName {
-  def apply(s: String): TName = s.asInstanceOf[TName]
-}
-
-enum Type derives Eql {
-  case TArr(a: Type, b: Type)
-  case TLin(a: Type, b: Type)
-  case TSum(a: Type, b: Type)
-  case TTen(a: Type, b: Type)
-  case TBang(a: Type)
-  case TPair(a: Type, b: Type)
-  case TBase(p: Prim)
-  case TVar(n: TName)
-  case TPoint
-}
-
-import Type._
-
-val TVoid  = TBase(PVoid)
-
-enum Scheme derives Eql { case Forall(vs: List[TName], t: Type) }
-
-import Scheme._
 
 /////// ----- Substitutions ----- /////////
 
-opaque type Id = Long
+object Ids {
+  opaque type Id = Long
 
-object Id {
-  private inline def (id: Id) asScala: Long = id.asInstanceOf[Long]
-  private inline def apply(l: Long): Id     = l.asInstanceOf[Id]
+  object Id {
+    private def (id: Id) asScala: Long = id.asInstanceOf[Long]
+    private def apply(l: Long): Id     = l.asInstanceOf[Id]
 
-  val initId = 0l
+    val initId = 0l
 
-  def (id: Id) succ: Id = Id { id.asScala + 1l }
+    def (id: Id) succ: Id = Id { id.asScala + 1l }
+  }
 }
 
-import Id._
+import Ids.Id._
 
-trait TypeEnv[Env] {
-  val empty: Env
-  def (e: Env) elems: List[Scheme]
-  def (e: Env) map(f: Scheme => Scheme): Env
-  def (e: Env) extend(p: (Name, Scheme)): Env
-  def (e: Env) restrict(x: Name): Env
+object Environment {
+
+  import Types._
+
+  trait TypeEnv[Env] {
+    val empty: Env
+    def (e: Env) elems: List[Scheme]
+    def (e: Env) map(f: Scheme => Scheme): Env
+    def (e: Env) extend(p: (Name, Scheme)): Env
+    def (e: Env) restrict(x: Name): Env
+  }
+
+  type TypeEnvMap = Map[Name, Scheme]
+
+  given TypeEnv[TypeEnvMap] {
+    import scala.collection.immutable.ListMap
+
+    val empty                                     = ListMap.empty
+    def (e: TypeEnvMap) map(f: Scheme => Scheme)  = e.view.mapValues(f).toMap
+    def (e: TypeEnvMap) extend(p: (Name, Scheme)) = e + p
+    def (e: TypeEnvMap) restrict(x: Name)         = e - x
+    def (e: TypeEnvMap) elems = e.toSeq.view.sortBy(_._1).map(_._2).toList
+  }
 }
 
-type TypeEnvMap = Map[Name, Scheme]
-
-implied for TypeEnv[TypeEnvMap] {
-  import scala.collection.immutable.ListMap
-
-  val empty                                     = ListMap.empty
-  def (e: TypeEnvMap) map(f: Scheme => Scheme)  = e.mapValues(f)
-  def (e: TypeEnvMap) extend(p: (Name, Scheme)) = e + p
-  def (e: TypeEnvMap) restrict(x: Name)         = e - x
-  def (e: TypeEnvMap) elems = e.toSeq.view.sortBy(_._1).map(_._2).toList
-}
 
 enum TypeError { case Error(msg: String) }
 
@@ -248,214 +267,127 @@ import TypeError._
 
 type Except[A] = Either[TypeError, A]
 
-type Subst = Map[TName, Type]
 
-trait Substitutable[A] {
-  def (a: A) `subFrom` (s: Subst): A
-  def (a: A) free: Set[TName]
-}
+object Substitutions {
+  import Types._
+  import Type._
+  import Environment._
+  import Scheme._
 
-implied for Substitutable[Type] {
-  def (a: Type) `subFrom` (s: Subst) = a match {
-    case t @ (_:TBase | TPoint) => t
-    case t @ TVar(a)            => s.getOrElse(a, t)
-    case t1 `TArr` t2           => TArr(t1 `subFrom` s, t2 `subFrom` s)
-    case t1 `TLin` t2           => TLin(t1 `subFrom` s, t2 `subFrom` s)
-    case TTen(t1,t2)            => TTen(t1 `subFrom` s, t2 `subFrom` s)
-    case TSum(t1,t2)            => TSum(t1 `subFrom` s, t2 `subFrom` s)
-    case TPair(t1,t2)           => TPair(t1 `subFrom` s, t2 `subFrom` s)
-    case TBang(t)               => TBang(t `subFrom` s)
+  type Subst = Map[TName, Type]
+
+  val emptySubst: Subst = Map.empty
+
+  trait Substitutable[A] {
+    def (a: A) `subFrom` (s: Subst): A
+    def (a: A) free: Set[TName]
   }
 
-  def (a: Type) free: Set[TName] = a match {
-    case _:TBase | TPoint => Set.empty
-    case TVar(a)          => Set(a)
-    case t1 `TArr` t2     => t1.free ++ t2.free
-    case t1 `TLin` t2     => t1.free ++ t2.free
-    case TTen(t1,t2)      => t1.free ++ t2.free
-    case TSum(t1,t2)      => t1.free ++ t2.free
-    case TPair(t1,t2)     => t1.free ++ t2.free
-    case TBang(t)         => t.free
+  given Substitutable[Type] {
+
+    def (a: Type) `subFrom` (s: Subst) = a match {
+      case t @ (_:TBase | TPoint) => t
+      case t @ TVar(a)            => s.getOrElse(a, t)
+      case t1 `TArr` t2           => TArr(t1 `subFrom` s, t2 `subFrom` s)
+      case t1 `TLin` t2           => TLin(t1 `subFrom` s, t2 `subFrom` s)
+      case TTen(t1,t2)            => TTen(t1 `subFrom` s, t2 `subFrom` s)
+      case TSum(t1,t2)            => TSum(t1 `subFrom` s, t2 `subFrom` s)
+      case TPair(t1,t2)           => TPair(t1 `subFrom` s, t2 `subFrom` s)
+      case TBang(t)               => TBang(t `subFrom` s)
+    }
+
+    def (a: Type) free: Set[TName] = a match {
+      case _:TBase | TPoint => Set.empty
+      case TVar(a)          => Set(a)
+      case t1 `TArr` t2     => t1.free ++ t2.free
+      case t1 `TLin` t2     => t1.free ++ t2.free
+      case TTen(t1,t2)      => t1.free ++ t2.free
+      case TSum(t1,t2)      => t1.free ++ t2.free
+      case TPair(t1,t2)     => t1.free ++ t2.free
+      case TBang(t)         => t.free
+    }
+  }
+
+  given [A: Substitutable] : Substitutable[List[A]] {
+    def (as: List[A]) `subFrom` (s: Subst) = as.map(_ `subFrom` s)
+    def (as: List[A]) free                 = as.foldLeft(Set.empty)(_ ++ _.free)
+  }
+
+  given Substitutable[Scheme] {
+    def (a: Scheme) `subFrom` (s: Subst) = {
+      val Forall(as, t) = a
+      val free = as.foldLeft(s)(_ - _)
+      Forall(as, t `subFrom` free)
+    }
+
+    def (a: Scheme) free: Set[TName] = {
+      val Forall(as, t) = a
+      t.free -- as
+    }
+  }
+
+  given [Env: TypeEnv] : Substitutable[Env] {
+    def (e: Env) `subFrom` (s: Subst) = e.map(_ `subFrom` s)
+    def (a: Env) free                 = a.elems.free
   }
 }
+
 
 type State[S, A] = S => (A, S)
 
 trait Functor[F[_]] {
-  def (fa: F[A]) map[A, B](f: A => B): F[B]
+  def [A, B](fa: F[A]) map(f: A => B): F[B]
 }
 
 trait Monad[F[_]] extends Functor[F] {
   def pure[A](a: A): F[A]
-  def (fa: F[A]) flatMap[A, B](f: A => F[B]): F[B]
+  def [A, B](fa: F[A]) flatMap(f: A => F[B]): F[B]
 }
 
-trait StateF[S] extends Functor[[A] => State[S,A]] {
-  def (sa: State[S,A]) map[A, B](f: A => B): State[S,B] = { state =>
+trait StateF[S] extends Functor[[A] =>> State[S,A]] {
+  def [A, B](sa: State[S,A]) map(f: A => B): State[S,B] = { state =>
     val (a, s) = sa(state)
     (f(a), s)
   }
 }
 
-trait StateM[S] extends StateF[S] with Monad[[A] => State[S,A]] {
+trait StateM[S] extends StateF[S] with Monad[[A] =>> State[S,A]] {
 
   def pure[A](a: A): State[S,A] = state => (a, state)
 
-  def (sa: State[S,A]) flatMap[A, B](f: A => State[S,B]): State[S,B] =
+  def [A, B](sa: State[S,A]) flatMap(f: A => State[S,B]): State[S,B] =
     { state =>
       val (a, s1) = sa(state)
       f(a)(s1)
     }
 }
 
-implied [S] for StateF[S]
+given [S]: StateF[S]
 
-val letters: Stream[String] = {
+val letters: LazyList[String] = {
   import language.implicitConversions
-  val alpha = ('a' to 'z').toStream.map(_.toString)
+  val alpha = ('a' to 'z').to(LazyList).map(_.toString)
   val numeric = for
-    n <- Stream.from(1)
+    n <- LazyList.from(1)
     x <- alpha
   yield s"$x$n"
   alpha #::: numeric
 }
 
-implied for Substitutable[Scheme] {
-  def (a: Scheme) `subFrom` (s: Subst) = {
-    val Forall(as, t) = a
-    val free = as.foldLeft(s)(_ - _)
-    Forall(as, t `subFrom` free)
-  }
+import Substitutions._
+import Substitutions.given
 
-  def (a: Scheme) free: Set[TName] = {
-    val Forall(as, t) = a
-    t.free -- as
-  }
-}
-
-implied [A:Substitutable] for Substitutable[List[A]] {
-  def (as: List[A]) `subFrom` (s: Subst) = as.map(_ `subFrom` s)
-  def (as: List[A]) free                 = as.foldLeft(Set.empty)(_ ++ _.free)
-}
-
-implied [Env:TypeEnv] for Substitutable[Env] {
-  def (e: Env) `subFrom` (s: Subst) = e.map(_ `subFrom` s)
-  def (a: Env) free                 = a.elems.free
-}
-
-val emptySubst: Subst = Map.empty
-
-def (s1: Subst) `compose` (s2: Subst) = (s2 ++ s1) `mapValues` (_ `subFrom` s1)
-
-/////// ----- Parsing ----- /////////
-
-object Parsing {
-  import language.implicitConversions
-  import util.parsing.combinator._
-
-  private object EECParsers extends JavaTokenParsers {
-    type P = Parser[Tree]
-
-    val term:  P = phrase(expr)
-    def expr:  P = app
-    def expr1: P = lam | lin | let | letT | cse | expr2
-    def expr2: P = tsor | pExpr
-    def pExpr: P = op | aexpr
-    def aexpr: P = ref | unit | pair | wrap
-
-    def app: P = rep1(expr1)          ^^ { case ts => ts.reduceLeft(App(_,_)) }
-    def lam: P = "\\"~!id~!"."~!expr  ^^ { case _~x~_~t => Lam(x,t) }
-    def lin: P = "^\\"~!id~!"."~!expr ^^ { case _~x~_~t => Lin(x,t) }
-
-    def let: P = "let"~"!"~id~"be"~!expr~!"in"~!expr ^^ {
-      case _~_~x~_~t~_~u => Let(x,t,u)
-    }
-
-    def letT: P = "let"~"!"~id~"*:"~!id~!"be"~!expr~!"in"~!expr ^^ {
-      case _~_~x~_~y~_~s~_~t => LetT(x,y,s,t)
-    }
-
-    def cse: P = {
-      "case"~!expr~!"of"~!"{"~!
-        "inl"~!id~!"."~!expr~!";"~!
-        "inr"~!id~!"."~!expr~!
-      "}" ^^ { case _~e~_~_~_~x~_~l~_~_~y~_~r~_ => CaseExpr(e,x,l,y,r) }
-    }
-
-    def op: P = ("!" | "?" | "fst" | "snd" | "inl" | "inr")~aexpr ^^ {
-      case op~e => op match {
-        case "!"   => Bang(e)
-        case "?"   => WhyNot(e)
-        case "fst" => App(Op(Fst),e)
-        case "snd" => App(Op(Snd),e)
-        case "inl" => App(Op(Inl),e)
-        case "inr" => App(Op(Inr),e)
-      }
-    }
-
-    def tsor: P = "!"~aexpr~"*:"~!aexpr   ^^ { case _~t~_~z   => Tensor(t,z) }
-    def pair: P = "("~expr~","~!expr~!")" ^^ { case _~t~_~u~_ => Pair(t,u)   }
-    def wrap: P = "("~expr~")"            ^^ { case _~e~_     => e           }
-    def unit: P = "*"                     ^^ { _              => Point       }
-    def ref:  P = id                      ^^ {                   Var(_)      }
-
-    val reservedWords = Set(
-      "case", "of", "let", "be", "in", "fst", "snd", "inl", "inr"
-    )
-
-    val id = Parser { input =>
-      ident(input).filterWithError(
-        !reservedWords.contains(_),
-        reservedWord => s"inappropriate use of $reservedWord",
-        input
-      )
-    }
-  }
-
-  object EEC {
-    import EECParsers._
-    import java.io.StringReader
-
-    def (s: String) eec: Tree | String = parseAll(term, StringReader(s)) match {
-      case Success(matched,_) => matched
-      case f:Failure          => f.toString
-      case e:Error            => e.toString
-    }
-
-    def (r: Tree | String) ! = r match {
-      case matched: Tree => matched
-      case err: String   => sys.error(err)
-    }
-  }
-}
-
-import Parsing.EEC._
-
-puts("f (\\x.y) b".eec.!)
-puts("let !x *: z be s in inr z".eec.!)
-puts("let !y be x in *".eec.!)
-puts("!a".eec.!)
-puts("?v".eec.!)
-puts("a".eec.!)
-puts("!f g".eec.!)
-puts("!(f g)".eec.!)
-puts("fst (a, b)".eec.!)
-puts("snd (*, (a, b))".eec.!)
-puts("inl *".eec.!)
-puts("inr *".eec.!)
-puts("!a *: b".eec.!)
-puts("!a *: (b g)".eec.!)
-puts("f (a b) (c d e)".eec.!)
-puts("case z of {inl l.f a b; inr r.*}".eec.!)
-puts("""(\x.x) (\x.x)""".eec.!)
+def (s1: Subst) `compose` (s2: Subst) = (s2 ++ s1).view.mapValues(_ `subFrom` s1).toMap
 
 /////// ----- Usage ----- /////////
 
-val I = """\x.x""".eec.!
-val K = """\x.\y.x""".eec.!
-val S = """\f.\g.\x.f x (g x)""".eec.!
+import ast.Tree._
 
-val Bind = """\f.\x.let !y be x in f y""".eec.!
+val I = Lam("x", Var("x"))
+val K = Lam("x", Lam("y", Var("x")))
+val S = Lam("f", Lam("g", Lam("x", App(App(Var("f"), Var("x")), App(Var("g"), Var("x"))))))
+
+val Bind = Lam("f", Lam("x", Let("y", Var("x"), App(Var("f"), Var("y")))))
 
 puts(I)
 puts(K)
